@@ -136,4 +136,9 @@ public class StepController {
     public void deleteZeroStepData() {
         databaseHelper.deleteZeroStepData();
     }
+    
+    // Xóa các bản ghi trùng lặp
+    public void deleteDuplicateData() {
+        databaseHelper.deleteDuplicateData();
+    }
 } 

@@ -241,4 +241,23 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         db.delete(TABLE_STEPS, COLUMN_STEP_COUNT + " = 0", null);
         db.close();
     }
+
+    // Xóa các bản ghi trùng lặp
+    public void deleteDuplicateData() {
+        SQLiteDatabase db = this.getWritableDatabase();
+        
+        // Tạo bảng tạm để lưu các bản ghi duy nhất
+        db.execSQL("CREATE TABLE IF NOT EXISTS temp_steps AS " +
+                "SELECT MIN(id) as id, step_count, date, start_time, duration " +
+                "FROM " + TABLE_STEPS + " " +
+                "GROUP BY step_count, duration");
+        
+        // Xóa bảng cũ
+        db.execSQL("DROP TABLE IF EXISTS " + TABLE_STEPS);
+        
+        // Đổi tên bảng tạm thành bảng chính
+        db.execSQL("ALTER TABLE temp_steps RENAME TO " + TABLE_STEPS);
+        
+        db.close();
+    }
 } 
