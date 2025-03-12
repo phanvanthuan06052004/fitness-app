@@ -3,8 +3,6 @@ package hcmute.edu.vn.phanVanThuan;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
-import android.widget.Button;
-import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -16,44 +14,26 @@ import androidx.core.content.ContextCompat;
 import android.util.Log;
 import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.IntentFilter;
-import android.widget.Toast;
-import android.widget.ListView;
-import android.widget.ArrayAdapter;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import android.app.AlertDialog;
 import android.content.DialogInterface;
+import android.content.IntentFilter;
 
-import hcmute.edu.vn.phanVanThuan.controller.StepController;
-import hcmute.edu.vn.phanVanThuan.model.StepData;
-import hcmute.edu.vn.phanVanThuan.model.DatabaseHelper;
+import hcmute.edu.vn.phanVanThuan.controller.StepCounterController;
+import hcmute.edu.vn.phanVanThuan.view.MainView;
 
 public class MainActivity extends AppCompatActivity {
 
-    private TextView tvStepCount;
-    private Button btnStartTracking;
-    private Button btnViewHistory;
-    private Button btnResetDatabase;
-    private ListView lvHistory;
-    private boolean isTracking = false;
+    private MainView mainView;
+    private StepCounterController stepCounterController;
     private StepCountReceiver stepCountReceiver;
-    private StepController stepController;
     
     private class StepCountReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (StepService.ACTION_STEP_COUNTER.equals(intent.getAction())) {
                 int stepCount = intent.getIntExtra(StepService.EXTRA_STEP_COUNT, 0);
-                updateStepCountUI(stepCount);
+                mainView.updateStepCountUI(stepCount);
             }
         }
-    }
-    
-    private void updateStepCountUI(int stepCount) {
-        tvStepCount.setText("Bước chân: " + stepCount);
     }
     
     private void checkPermissions() {
@@ -72,7 +52,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         checkPermissions();
@@ -80,29 +59,27 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         // Khởi tạo controller
-        stepController = new StepController(this);
-
-        tvStepCount = findViewById(R.id.tvStepCount);
-        btnStartTracking = findViewById(R.id.btnStartTracking);
-        btnViewHistory = findViewById(R.id.btnViewHistory);
-        btnResetDatabase = findViewById(R.id.btnResetDatabase);
-        lvHistory = findViewById(R.id.lvHistory);
-
-        btnStartTracking.setOnClickListener(new View.OnClickListener() {
+        stepCounterController = new StepCounterController(this);
+        
+        // Khởi tạo view
+        mainView = new MainView(this, findViewById(android.R.id.content));
+        
+        // Thiết lập sự kiện click cho các nút
+        mainView.setStartTrackingClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 toggleTracking();
             }
         });
         
-        btnViewHistory.setOnClickListener(new View.OnClickListener() {
+        mainView.setViewHistoryClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 toggleHistoryView();
             }
         });
         
-        btnResetDatabase.setOnClickListener(new View.OnClickListener() {
+        mainView.setResetDatabaseClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 showResetDatabaseConfirmation();
@@ -113,115 +90,55 @@ public class MainActivity extends AppCompatActivity {
         stepCountReceiver = new StepCountReceiver();
         
         // Hiển thị số bước chân đã lưu khi mở ứng dụng
-        int savedSteps = stepController.getStepCount();
-        updateStepCountUI(savedSteps);
+        int savedSteps = stepCounterController.getCurrentStepCount();
+        mainView.updateStepCountUI(savedSteps);
     }
     
     private void showResetDatabaseConfirmation() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Xóa dữ liệu");
-        builder.setMessage("Bạn có chắc chắn muốn xóa tất cả dữ liệu và tạo lại cơ sở dữ liệu không?");
-        builder.setPositiveButton("Có", new DialogInterface.OnClickListener() {
+        mainView.showResetDatabaseConfirmation(new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
                 resetDatabase();
             }
         });
-        builder.setNegativeButton("Không", null);
-        builder.show();
     }
     
     private void resetDatabase() {
-        // Dừng service nếu đang chạy
-        if (isTracking) {
-            Intent serviceIntent = new Intent(this, StepService.class);
-            stopService(serviceIntent);
-            isTracking = false;
-            btnStartTracking.setText("Bắt đầu theo dõi");
-        }
-        
-        // Xóa cơ sở dữ liệu
-        Context context = getApplicationContext();
-        context.deleteDatabase("step_counter.db");
-        
-        // Tạo lại DatabaseHelper
-        DatabaseHelper databaseHelper = new DatabaseHelper(context);
-        databaseHelper.close();
-        
-        // Reset SharedPreferences
-        stepController = new StepController(this);
-        stepController.resetStepCount();
+        // Reset cơ sở dữ liệu
+        stepCounterController.resetDatabase();
         
         // Cập nhật UI
-        updateStepCountUI(0);
+        mainView.updateStepCountUI(0);
         
         // Ẩn lịch sử nếu đang hiển thị
-        if (lvHistory.getVisibility() == View.VISIBLE) {
-            lvHistory.setVisibility(View.GONE);
-            btnViewHistory.setText("Xem lịch sử");
+        if (mainView.isHistoryVisible()) {
+            mainView.toggleHistoryVisibility(false);
         }
         
-        Toast.makeText(this, "Đã reset cơ sở dữ liệu thành công", Toast.LENGTH_SHORT).show();
-    }
-    
-    // Thêm phương thức để xóa các bản ghi có số bước = 0 và các bản ghi trùng lặp
-    private void cleanupZeroStepData() {
-        // Xóa các bản ghi có số bước = 0
-        stepController.deleteZeroStepData();
+        // Cập nhật trạng thái nút
+        mainView.updateTrackingButtonState(false);
         
-        // Xóa các bản ghi trùng lặp
-        stepController.deleteDuplicateData();
-        
-        // Tải lại lịch sử nếu đang hiển thị
-        if (lvHistory.getVisibility() == View.VISIBLE) {
-            loadStepHistory();
-        }
+        mainView.showToast("Đã reset cơ sở dữ liệu thành công");
     }
     
     private void toggleHistoryView() {
-        if (lvHistory.getVisibility() == View.VISIBLE) {
-            lvHistory.setVisibility(View.GONE);
-            btnViewHistory.setText("Xem lịch sử");
+        boolean isHistoryVisible = mainView.isHistoryVisible();
+        
+        if (isHistoryVisible) {
+            mainView.toggleHistoryVisibility(false);
         } else {
             // Xóa các bản ghi có số bước = 0 và các bản ghi trùng lặp trước khi hiển thị lịch sử
-            cleanupZeroStepData();
+            stepCounterController.cleanupData();
             
+            // Hiển thị lịch sử
             loadStepHistory();
-            lvHistory.setVisibility(View.VISIBLE);
-            btnViewHistory.setText("Ẩn lịch sử");
+            mainView.toggleHistoryVisibility(true);
         }
     }
     
     private void loadStepHistory() {
-        List<StepData> allStepDataList = stepController.getAllStepData();
-        List<StepData> stepDataList = new ArrayList<>();
-        
-        // Lọc bỏ các bản ghi có số bước = 0 và các bản ghi trùng lặp
-        java.util.Set<String> uniqueEntries = new java.util.HashSet<>();
-        for (StepData stepData : allStepDataList) {
-            if (stepData.getStepCount() > 0) {
-                // Tạo một chuỗi duy nhất đại diện cho bản ghi này (số bước + thời gian)
-                String uniqueKey = stepData.getStepCount() + "_" + stepData.getFormattedDuration();
-                if (!uniqueEntries.contains(uniqueKey)) {
-                    uniqueEntries.add(uniqueKey);
-                    stepDataList.add(stepData);
-                }
-            }
-        }
-        
-        if (stepDataList.isEmpty()) {
-            // Nếu không có dữ liệu, hiển thị thông báo
-            List<String> emptyMessage = new ArrayList<>();
-            emptyMessage.add("Chưa có lịch sử bước chân");
-            ArrayAdapter<String> emptyAdapter = new ArrayAdapter<>(this, 
-                    android.R.layout.simple_list_item_1, emptyMessage);
-            lvHistory.setAdapter(emptyAdapter);
-        } else {
-            // Sử dụng adapter tùy chỉnh để hiển thị dữ liệu
-            hcmute.edu.vn.phanVanThuan.adapter.StepHistoryAdapter adapter = 
-                    new hcmute.edu.vn.phanVanThuan.adapter.StepHistoryAdapter(this, stepDataList);
-            lvHistory.setAdapter(adapter);
-        }
+        // Lấy danh sách lịch sử bước chân đã lọc
+        mainView.displayStepHistory(stepCounterController.getFilteredStepHistory());
     }
     
     @Override
@@ -245,42 +162,27 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void toggleTracking() {
-        Intent serviceIntent = new Intent(this, StepService.class);
-        if (isTracking) {
-            // Lưu dữ liệu trước khi dừng service
-            int currentSteps = stepController.getStepCount();
+        // Bắt đầu hoặc dừng theo dõi bước chân
+        boolean isTracking = stepCounterController.toggleTracking();
+        
+        // Cập nhật UI
+        mainView.updateTrackingButtonState(isTracking);
+        
+        if (!isTracking) {
+            // Nếu đã dừng theo dõi, cập nhật số bước chân về 0
+            mainView.updateStepCountUI(0);
+            
+            // Hiển thị thông báo
+            int currentSteps = stepCounterController.getCurrentStepCount();
             if (currentSteps > 0) {
-                // Lưu dữ liệu vào cơ sở dữ liệu
-                stepController.saveStepDataToDatabase(currentSteps);
-                
-                // Xóa các bản ghi trùng lặp sau khi lưu
-                stepController.deleteDuplicateData();
-                
-                // Hiển thị thông báo
-                Toast.makeText(this, "Đã lưu " + currentSteps + " bước chân", Toast.LENGTH_SHORT).show();
+                mainView.showToast("Đã lưu " + currentSteps + " bước chân");
                 
                 // Tải lại lịch sử nếu đang hiển thị
-                if (lvHistory.getVisibility() == View.VISIBLE) {
+                if (mainView.isHistoryVisible()) {
                     loadStepHistory();
                 }
             }
-            
-            stopService(serviceIntent);
-            Log.d("MainActivity", "Dừng StepService");
-            btnStartTracking.setText("Bắt đầu theo dõi");
-            
-            // Reset số bước chân về 0 và đặt lại thời gian bắt đầu
-            stepController.resetStepCount();
-            updateStepCountUI(0);
-        } else {
-            // Đặt lại thời gian bắt đầu khi bắt đầu tracking
-            stepController.saveStartTime(System.currentTimeMillis());
-            
-            startService(serviceIntent);
-            Log.d("MainActivity", "Bắt đầu StepService");
-            btnStartTracking.setText("Dừng theo dõi");
         }
-        isTracking = !isTracking;
     }
 
     @Override
@@ -296,5 +198,4 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-
 }
