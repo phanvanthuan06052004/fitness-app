@@ -173,7 +173,6 @@ public class StepService extends Service implements SensorEventListener {
             sensorManager.unregisterListener(this);
         }
         
-        // Không lưu dữ liệu ở đây vì đã được lưu trong MainActivity
         
         Log.d("StepService", "Service destroyed!");
     }
